@@ -1,12 +1,11 @@
 import pandas as pd
-
 from sklearn.metrics.pairwise import cosine_similarity
-
-from sqlalchemy import create_engine, text
-
+from sqlalchemy import create_engine
 from tabulate import tabulate
+from sklearn.metrics import mean_squared_error
 
-# Establishing connection with SQL Database
+
+# ------Establishing connection with SQL Database------
 def sqlalchemy_engine():
     server = 'DESKTOP-TOQNTIJ'
     database = 'Streaming_temp2'
@@ -19,12 +18,12 @@ def sqlalchemy_engine():
 
     engine = create_engine(connection_string)
     print("🎉🎉 Connection established to SQL Server using SQLAlchemy 🎉🎉")
-    print("*"*65)
+    print("*" * 65)
     return engine
 
 
-# For extracting and printing data from SQL Database
-def extract_data_from_sql(engine):
+# ------For extracting and printing data from SQL Database------
+def extract_data(engine):
     # For user_dim table
     user_query = "SELECT * FROM user_dim;"
     user_data = pd.read_sql(user_query, con=engine)
@@ -49,162 +48,164 @@ def extract_data_from_sql(engine):
 
     return user_data, content_data, subscription_plan_data, device_data, interaction_data
 
-def extract(user_data, content_data, subscription_plan_data, device_data, interaction_data):
+# ------Formatting extracted data------
+def formatting_extracted_data(user_data, content_data, subscription_plan_data, device_data, interaction_data):
+    # Users table
+    headers = ["User ID", "User Name", "Location", "Age Group"]
+    user_table = tabulate(user_data, headers, tablefmt="grid")
+    print("-" * 16)
+    print("✨User Table: 👇🏻")
+    print("-" * 16)
+    print(user_table)
 
-    while True:
-        print("Choose from the below list 👇🏻: ")
-        print("""1. Users Data
-2. Content Data
-3. Subscription Plan Data
-4. Device Data
-5. User Interaction Data
-6. Back to main menu
-                        """)
+    # Content Table
+    headers = ["Content ID", "Title", "Genre", "Release Year"]
+    content_table = tabulate(content_data, headers, tablefmt="grid")
+    print("-" * 18)
+    print("✨Content Table:👇🏻")
+    print("-" * 18)
+    print(content_table)
 
-        choice = int(input("Enter type of data to be extracted: "))
-        if choice == 1:
-            # Users table
-            headers = ["User ID", "User Name", "Location", "Age Group"]
-            user_table = tabulate(user_data, headers, tablefmt="grid")
-            print("-" * 16)
-            print("✨User Table: 👇🏻")
-            print("-" * 16)
-            print(user_table)
-            break
+    # Subscription Plan table
+    headers = ["Plan ID", "Plan Name", "Price", "Features"]
+    subscription_plan_table = tabulate(subscription_plan_data, headers, tablefmt="grid")
+    print("-" * 28)
+    print("✨Subscription Plan Table:👇🏻")
+    print("-" * 28)
+    print(subscription_plan_table)
 
-        elif choice == 2:
-            # Content Table
-            headers = ["Content ID", "Title", "Genre", "Release Year"]
-            content_table = tabulate(content_data, headers, tablefmt="grid")
-            print("-" * 18)
-            print("✨Content Table:👇🏻")
-            print("-" * 18)
-            print(content_table)
-            break
+    # Device Table
+    headers = ["Device ID", "Device Type", "Operating System", "Manufacturer"]
+    device_table = tabulate(device_data, headers, tablefmt="grid")
+    print("-" * 18)
+    print("✨Device Table:👇🏻")
+    print("-" * 18)
+    print(device_table)
 
-        elif choice == 3:
-            # Subscription Plan table
-            headers = ["Plan ID", "Plan Name", "Price", "Features"]
-            subscription_plan_table = tabulate(subscription_plan_data, headers, tablefmt="grid")
-            print("-" * 28)
-            print("✨Subscription Plan Table:👇🏻")
-            print("-" * 28)
-            print(subscription_plan_table)
-            break
 
-        elif choice == 4:
-            # Device Table
-            headers = ["Device ID", "Device Type", "Operating System", "Manufacturer"]
-            device_table = tabulate(device_data, headers, tablefmt="grid")
-            print("-" * 18)
-            print("✨Device Table:👇🏻")
-            print("-" * 18)
-            print(device_table)
-            break
-
-        elif choice == 5:
-            # Interaction Table
-            headers = ["Interaction Id", "User ID", "Content ID", "Plan ID", "Device ID", "Watch Time",
+    # Interaction Table
+    headers = ["Interaction Id", "User ID", "Content ID", "Plan ID", "Device ID", "Watch Time",
                        "Rating", "Activity Type", "Activity Timestamp", "Interaction Date"]
-            interaction_table = tabulate(interaction_data, headers, tablefmt="grid")
-            print("-" * 23)
-            print("✨Interaction Table: 👇🏻")
-            print("-" * 23)
-            print(interaction_table)
-            break
+    interaction_table = tabulate(interaction_data, headers, tablefmt="grid")
+    print("-" * 23)
+    print("✨Interaction Table: 👇🏻")
+    print("-" * 23)
+    print(interaction_table)
 
-        elif choice == 6:
-            return
 
-# To build collaborative filtering
-def collaborative_filtering(engine, user_id, interaction_data):
+# ------To build recommendation engine------
+def recommendation_engine(target_user, interaction_data, content_data):
 
-    content_query = "SELECT content_id FROM content_dim"
-    content_id_data = pd.read_sql(content_query, con=engine)
-    print(content_id_data)
+    # ----Collaborative Filtering----
+    user_content_matrix = interaction_data.pivot_table(index='user_id',
+                                                        columns='content_id',
+                                                        values='rating').fillna(0)
 
-    # Create user-content interaction matrix for collaborative filtering
-    user_content_matrix = interaction_data.pivot_table(index='user_id', columns='content_id', values='rating').fillna(0)
-
-    # Compute cosine similarity between users
     user_similarity = cosine_similarity(user_content_matrix)
-
-    # Select user for whom to make recommendations
-    target_user = user_id
     # Get the similarity score of the target user with other users
-    user_sim_scores = user_similarity[target_user]
+    user_sim_scores = user_similarity[user_content_matrix.index == target_user].flatten()
+
     # Predict ratings by taking weighted average of similar users' ratings
     predicted_ratings = user_sim_scores.dot(user_content_matrix) / user_sim_scores.sum()
-    return predicted_ratings
 
-def content_based_filtering():
-    pass
+    # ----Content based Filtering----
+    # Create a matrix of content features for similarity calculation
+    content_features_matrix = content_data[['genre', 'release_year']]  # You can add more features
+
+    # Use one-hot encoding for categorical features like genre
+    content_features_matrix = pd.get_dummies(content_features_matrix)
+
+    content_similarity = cosine_similarity(content_features_matrix)
+
+    # Fetch user's watched or highly rated content
+    user_ratings = user_content_matrix.loc[target_user]
+
+    liked_content = user_ratings[user_ratings > 3]
+
+    # Initialize a full-length series with float type to avoid dtype mismatch
+    liked_content_full = pd.Series([0.0] * content_similarity.shape[0], index=user_content_matrix.columns)
+
+    # Update liked_content_full with the user's liked content ratings
+    liked_content_full.update(liked_content.astype(float))
+
+    # Recommend similar content to the content the user liked
+    similar_content_scores = content_similarity.dot(liked_content_full)
+
+    recommended_content_indices = similar_content_scores.argsort()[-5:][::-1]
+    recommended_content = content_data.iloc[recommended_content_indices]
+    print("✨✨ Recommended content for you 👇👇")
+
+    print("-" * 52)
+    print(recommended_content[['title', 'genre']])
+
+    print("*" * 52)
+
+    return user_content_matrix, predicted_ratings
 
 
-# For performing Extract, Transform and Recommendation Operations
+# ------Evaluation of Recommendation------
+def evaluate_recommendation(target_user, user_content_matrix, predicted_ratings):
+    true_ratings = user_content_matrix.loc[target_user]
+    mse = mean_squared_error(true_ratings, predicted_ratings)
+
+    print("-" * 55)
+    print(f"✨ Mean Squared Error (MSE) for recommendations 👉 {mse}")
+    print("-" * 55)
+
+    if mse == 0:
+        print("🎉🎉 Recommended content is 'Perfectly Accurate' 🎉🎉")
+    elif mse > 1:
+        print("😢😢 Recommended content is 'Not Accurate' 😢😢")
+    else:
+        print("😐😐 Recommended content is 'Partially Accurate' 😐😐")
+
+
+
+
+# ------For performing Extract, Transform and Recommendation Operations------
 def run_operations():
     engine = sqlalchemy_engine()
 
+
+    print("\n\n")
+    print("*" * 170)
+
+    # Extract data
     print("✨✨ Extracting Streaming Service Data from SQL... 👇🏻👇🏻")
-    user_data, content_data, subscription_plan_data, device_data, interaction_data = extract_data_from_sql(engine)
+    user_data, content_data, subscription_plan_data, device_data, interaction_data = extract_data(engine)
+    formatting_extracted_data(user_data, content_data, subscription_plan_data, device_data, interaction_data)
 
-    while True:
-        print("\n👇🏻 Choose functionality for Recommendation Engine: ")
-        print("""1. Extract Data
-2. Predict ratings for unrated content 
-3. Recommend content for the user
-4. Evaluating Recommendations
-5. Exit
-        """)
+    print("*" * 170)
+    print("\n\n")
+    print("*" * 52)
 
-        choice = int(input("Enter your choice 😃: "))
+    # Recommending content to users
+    print("😊😊 To view Recommended Content enter User ID 😊😊")
+    print("-" * 52)
 
-        while True:
-            if choice == 1:
-                extract(user_data, content_data, subscription_plan_data, device_data, interaction_data)
-                break
+    user_id = int(input("✨ Enter user id: "))
 
-            elif choice == 2:
-                user_id = int(input("Enter User ID: "))
+    print("-" * 52)
 
-                print("Predicted Ratings for content they have not rated: ")
-                predicted_ratings = collaborative_filtering(engine, user_id, interaction_data)
-                print(predicted_ratings)
-                break
-
-            elif choice == 3:
-                user_id = int(input("Enter User ID: "))
-                print("Recommended Content for User ID: ",user_id)
-
-                break
-
-            elif choice == 4:
-                pass
+    user_content_matrix, predicted_ratings = recommendation_engine(user_id, interaction_data, content_data)
 
 
+    print("\n\n")
+    print("*" * 55)
 
+    # Evaluating Recommendation for User
+    print("✨✨ Evaluating Recommendations Accuracy... ✨✨")
 
+    evaluate_recommendation(user_id, user_content_matrix, predicted_ratings)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    #
+    print("*" * 55)
+    print("✨" * 25)
+    print("T      H      A      N      K          Y      O      U")
+    print("✨" * 25)
 
 
 if __name__ == "__main__":
+    print("*" * 65)
     print("🙂🙂 Welcome to Data Processing and Recommendation Engine 🙂🙂")
     print("*"*65)
     run_operations()
